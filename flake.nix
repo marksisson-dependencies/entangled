@@ -13,6 +13,44 @@
             (final.haskellPackages.callPackage ./${packageName}.nix { }))
           (oldAttrs: { src = gitignore.lib.gitignoreSource oldAttrs.src; });
 
+        "${packageName}-docker-image" = let
+          minimal = final.runCommand "minimal" { } ''
+            mkdir -p $out/bin
+            cp -p ${
+              final.pkgsCross.gnu64.pkgsStatic.${packageName}
+            }/bin/${packageName} $out/bin/${packageName}
+
+            # remove "false" run-time dependencies from binary
+            # to minimize closure size
+            ${final.removeReferencesTo}/bin/remove-references-to -t ${
+              final.pkgsCross.gnu64.pkgsStatic.${packageName}
+            } $out/bin/*
+            ${final.removeReferencesTo}/bin/remove-references-to -t ${
+              final.pkgsCross.gnu64.pkgsStatic.${packageName}.data
+            } $out/bin/*
+
+            mkdir -p $out/lib/${packageName}/data
+            shopt -s globstar
+            cp -rp ${
+              final.pkgsCross.gnu64.pkgsStatic.${packageName}.data
+            }/**/data/* $out/lib/${packageName}/data
+          '';
+        in final.dockerTools.buildLayeredImage {
+          name = "${packageName}";
+          tag = "latest";
+          contents = [ minimal ];
+          config = {
+            Env = [ "entangled_datadir=/lib/entangled" ];
+            WorkingDir = "/data";
+            EntryPoint = [ "/bin/${packageName}" ];
+          };
+          created = "now";
+          fakeRootCommands = ''
+            mkdir -p .cache
+            chmod a+rwx .cache
+          '';
+        };
+
         # https://github.com/NixOS/nixpkgs/issues/49748
         # see nixpkgs/pkgs/development/haskell-modules/lib/compose.nix (generateOptparseApplicativeCompletion)
         haskellPackages = let emptyOverlay = final: prev: { };
@@ -44,6 +82,7 @@
 
       packages.default = packages.${packageName};
       packages.${packageName} = legacyPackages.${packageName};
+      packages."${packageName}-docker-image" = legacyPackages."${packageName}-docker-image";
 
       apps.default = apps.${packageName};
       apps.${packageName} =
