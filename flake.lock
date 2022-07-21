@@ -2,11 +2,11 @@
   "nodes": {
     "flake-utils": {
       "locked": {
-        "lastModified": 1653893745,
-        "narHash": "sha256-0jntwV3Z8//YwuOjzhV2sgJJPt+HY6KhU7VZUL0fKZQ=",
+        "lastModified": 1656928814,
+        "narHash": "sha256-RIFfgBuKz6Hp89yRr7+NR5tzIAbn52h8vT6vXkYjZoM=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "1ed9fb1935d260de5fe1c2f7ee0ebaae17ed2fa1",
+        "rev": "7e2a3b3dfd9af950a856d66b0a7d01e3c18aa249",
         "type": "github"
       },
       "original": {
@@ -21,11 +21,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1646480205,
-        "narHash": "sha256-kekOlTlu45vuK2L9nq8iVN17V3sB0WWPqTTW3a2SQG0=",
+        "lastModified": 1658402513,
+        "narHash": "sha256-wk38v/mbLsOo6+IDmmH1H0ADR87iq9QTTD1BP9X2Ags=",
         "owner": "hercules-ci",
         "repo": "gitignore.nix",
-        "rev": "bff2832ec341cf30acb3a4d3e2e7f1f7b590116a",
+        "rev": "f2ea0f8ff1bce948ccb6b893d15d5ea3efaf1364",
         "type": "github"
       },
       "original": {
@@ -36,12 +36,13 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1655211057,
-        "narHash": "sha256-Zs5wm2GuW2nER9uYpgAAxuEqEK3LTo3Y+lwaWn/YYHk=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "1712ecaa5118815292f57d6669c3c81d84d842b3",
-        "type": "github"
+        "lastModified": 1658181762,
+        "narHash": "sha256-3xPNxgDcZzamHDC7cOqqvopmRlVPDrKNIWeB2BrqLbY=",
+        "ref": "refs/heads/razorrock/fix-cross-compile-infinite-recursion",
+        "rev": "ea7134b0bb736c01da201a79f124929951ed0a49",
+        "revCount": 385917,
+        "type": "git",
+        "url": "file:/usr/local/src/nixpkgs"
       },
       "original": {
         "id": "nixpkgs",

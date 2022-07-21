@@ -5,13 +5,16 @@
   inputs.gitignore.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { self, nixpkgs, flake-utils, gitignore }:
-    let packageName = "entangled";
-    in {
-      overlays.default = final: prev: {
-        ${packageName} = final.haskell.lib.overrideCabal
-          (final.haskell.lib.doJailbreak
-            (final.haskellPackages.callPackage ./${packageName}.nix { }))
-          (oldAttrs: { src = gitignore.lib.gitignoreSource oldAttrs.src; });
+    let
+      packageName = "entangled";
+      packageWithRequisitePackages = packages:
+        packages.callPackage ./${packageName}.nix { };
+    in let
+      overlay = final: prev: {
+        ${packageName} = final.haskell.lib.doJailbreak
+          ((final.haskell.lib.overrideCabal
+            (packageWithRequisitePackages final.haskellPackages)
+            (oldAttrs: { src = gitignore.lib.gitignoreSource oldAttrs.src; })));
 
         "${packageName}-docker-image" = let
           minimal = final.runCommand "minimal" { } ''
@@ -66,51 +69,60 @@
           prev.haskellPackages;
       };
 
-    } // flake-utils.lib.eachDefaultSystem (localSystem: rec {
-      #
-      # e.g., to cross-compile
-      # nix build .#pkgsCross.gnu64.entangled
-      # nix build .#pkgsCross.gnu64.pkgsStatic.entangled
-      # nix build .#pkgsCross.aarch64-darwin.pkgsStatic.entangled
-      #
+    in {
+      overlays.default = overlay;
+      overlays.${packageName} = overlay;
+    } // flake-utils.lib.eachDefaultSystem (localSystem:
+      let
+        package = packageWithRequisitePackages
+          nixpkgs.legacyPackages.${localSystem}.haskellPackages;
+        app = flake-utils.lib.mkApp { drv = package; };
+      in {
+        #
+        # e.g., to cross-compile
+        # nix build .#pkgsCross.gnu64.entangled
+        # nix build .#pkgsCross.gnu64.pkgsStatic.entangled
+        # nix build .#pkgsCross.aarch64-darwin.pkgsStatic.entangled
+        #
+        legacyPackages = import nixpkgs {
+          config = { };
+          inherit localSystem;
+          overlays = [ self.overlays.default ];
+        };
 
-      legacyPackages = import nixpkgs {
-        inherit localSystem;
-        overlays = [ self.overlays.default ];
-        config.allowUnsupportedSystem = true;
-      };
+        packages.default = package;
+        packages.${packageName} = package;
+        packages."${packageName}-docker-image" =
+          overlay."${packageName}-docker-image";
 
-      packages.default = packages.${packageName};
-      packages.${packageName} = legacyPackages.${packageName};
-      packages."${packageName}-docker-image" = legacyPackages."${packageName}-docker-image";
+        apps.default = app;
+        apps.${packageName} = app;
 
-      apps.default = apps.${packageName};
-      apps.${packageName} =
-        flake-utils.lib.mkApp { drv = packages.${packageName}; };
+        devShells.default = nixpkgs.legacyPackages.${localSystem}.mkShell {
+          packages = with nixpkgs.legacyPackages.${localSystem}; [
+            cabal2nix
+            cabal-install
+            ghcid
+            haskellPackages.haskell-language-server
+          ];
+          inputsFrom = [ package ];
+        };
 
-      devShells.default = legacyPackages.mkShell {
-        packages = with legacyPackages; [
-          cabal2nix
-          cabal-install
-          ghcid
-          haskellPackages.haskell-language-server
-        ];
-        inputsFrom = builtins.attrValues packages;
-      };
+        checks.default = nixpkgs.legacyPackages.${localSystem}.runCommand
+          "check-cabal2nix-sync" {
+            nativeBuildInputs =
+              [ nixpkgs.legacyPackages.${localSystem}.cabal2nix ];
+          } ''
+            if [[ -f ${self}/${packageName}.cabal && -f ${self}/${packageName}.nix ]]; then
+              cp ${self}/${packageName}.cabal .
+              if ! (cabal2nix . | diff ${self}/${packageName}.nix -); then
+                echo "error: ${packageName}.nix is out of sync!  To sync, execute ===> cabal2nix . > ${packageName}.nix"
+                exit 1
+              fi
+            fi
+            touch $out
+          '';
 
-      checks.default = legacyPackages.runCommand "check-cabal2nix-sync" {
-        nativeBuildInputs = [ legacyPackages.cabal2nix ];
-      } ''
-        if [[ -f ${self}/${packageName}.cabal && -f ${self}/${packageName}.nix ]]; then
-          cp ${self}/${packageName}.cabal .
-          if ! (cabal2nix . | diff ${self}/${packageName}.nix -); then
-            echo "error: ${packageName}.nix is out of sync!  To sync, execute ===> cabal2nix . > ${packageName}.nix"
-            exit 1
-          fi
-        fi
-        touch $out
-      '';
-
-      formatter = legacyPackages.nixfmt;
-    });
+        formatter = nixpkgs.legacyPackages.${localSystem}.nixfmt;
+      });
 }
