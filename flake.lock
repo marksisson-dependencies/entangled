@@ -36,13 +36,12 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1658181762,
-        "narHash": "sha256-3xPNxgDcZzamHDC7cOqqvopmRlVPDrKNIWeB2BrqLbY=",
-        "ref": "refs/heads/razorrock/fix-cross-compile-infinite-recursion",
-        "rev": "ea7134b0bb736c01da201a79f124929951ed0a49",
-        "revCount": 385917,
-        "type": "git",
-        "url": "file:/usr/local/src/nixpkgs"
+        "lastModified": 1659606041,
+        "narHash": "sha256-W4/u2ssr3fS4XOtltrsDD9w2kF4jYYZr6JyPGUW2jdI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "5f9b871b72b24f066b1a1e189efd0669f2888c49",
+        "type": "github"
       },
       "original": {
         "id": "nixpkgs",

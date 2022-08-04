@@ -1,3 +1,5 @@
+# to display copmlete list of available compilers
+# nix search nixpkgs#haskell.compiler ghc -e 'integer|native|HEAD|Binary|js'
 {
   description = "bi-directional tangle daemon for literate programming";
 
@@ -7,41 +9,29 @@
   outputs = { self, nixpkgs, flake-utils, gitignore }:
     let
       packageName = "entangled";
+
       packageWithRequisitePackages = packages:
-        packages.callPackage ./${packageName}.nix { };
-    in let
-      overlay = final: prev: {
-        ${packageName} = final.haskell.lib.doJailbreak
-          ((final.haskell.lib.overrideCabal
-            (packageWithRequisitePackages final.haskellPackages)
-            (oldAttrs: { src = gitignore.lib.gitignoreSource oldAttrs.src; })));
+        packages.haskell.lib.justStaticExecutables
+        (packages.haskell.lib.compose.overrideCabal
+          (drv: { src = gitignore.lib.gitignoreSource (drv.src + "/.."); })
+          (packages.haskellPackages.callPackage ./nix/${packageName}.nix { }));
 
-        "${packageName}-docker-image" = let
-          minimal = final.runCommand "minimal" { } ''
-            mkdir -p $out/bin
-            cp -p ${
-              final.pkgsCross.gnu64.pkgsStatic.${packageName}
-            }/bin/${packageName} $out/bin/${packageName}
+      containerImageWithRequisitePackages = packages:
+        let
+          package = if packages.stdenv.buildPlatform.isLinux then
+            packages.pkgsStatic.haskellPackages.${packageName}
+          else
+            packages.pkgsCross.gnu64.pkgsStatic.haskellPackages.${packageName};
 
-            # remove "false" run-time dependencies from binary
-            # to minimize closure size
-            ${final.removeReferencesTo}/bin/remove-references-to -t ${
-              final.pkgsCross.gnu64.pkgsStatic.${packageName}
-            } $out/bin/*
-            ${final.removeReferencesTo}/bin/remove-references-to -t ${
-              final.pkgsCross.gnu64.pkgsStatic.${packageName}.data
-            } $out/bin/*
-
+          data = packages.runCommand "data" { } ''
             mkdir -p $out/lib/${packageName}/data
             shopt -s globstar
-            cp -rp ${
-              final.pkgsCross.gnu64.pkgsStatic.${packageName}.data
-            }/**/data/* $out/lib/${packageName}/data
+            cp -rp ${package.data}/**/data/* $out/lib/${packageName}/data
           '';
-        in final.dockerTools.buildLayeredImage {
+        in packages.dockerTools.buildLayeredImage {
           name = "${packageName}";
           tag = "latest";
-          contents = [ minimal ];
+          contents = [ package data ];
           config = {
             Env = [ "entangled_datadir=/lib/entangled" ];
             WorkingDir = "/data";
@@ -53,36 +43,41 @@
             chmod a+rwx .cache
           '';
         };
+    in let
+      overlay = final: prev: {
+        haskellPackages = let
+          # https://github.com/NixOS/nixpkgs/issues/49748
+          # see nixpkgs/pkgs/development/haskell-modules/lib/compose.nix (generateOptparseApplicativeCompletion)
+          dhall = if prev.stdenv.hostPlatform != prev.stdenv.buildPlatform then
+            prev.haskellPackages.dhall.overrideAttrs
+            (previousAttrs: { postInstall = ""; })
+          else
+            prev.haskellPackages.dhall;
+        in prev.haskellPackages.override (old: {
+          overrides = let emptyOverlay = final: prev: { };
+          in nixpkgs.lib.composeExtensions (old.overrides or emptyOverlay)
+          (finalHaskellPackages: prevHaskellPackages: {
+            inherit dhall;
+            ${packageName} = packageWithRequisitePackages final;
+          });
+        });
 
-        # https://github.com/NixOS/nixpkgs/issues/49748
-        # see nixpkgs/pkgs/development/haskell-modules/lib/compose.nix (generateOptparseApplicativeCompletion)
-        haskellPackages = let emptyOverlay = final: prev: { };
-        in if prev.stdenv.hostPlatform != prev.stdenv.buildPlatform then
-          prev.haskellPackages.override (old: {
-            overrides =
-              nixpkgs.lib.composeExtensions (old.overrides or emptyOverlay)
-              (final: prev: {
-                dhall = prev.dhall.overrideAttrs (old: { postInstall = ""; });
-              });
-          })
-        else
-          prev.haskellPackages;
+        "${packageName}-container-image" =
+          containerImageWithRequisitePackages final;
       };
-
     in {
       overlays.default = overlay;
       overlays.${packageName} = overlay;
     } // flake-utils.lib.eachDefaultSystem (localSystem:
       let
-        package = packageWithRequisitePackages
-          nixpkgs.legacyPackages.${localSystem}.haskellPackages;
+        pkgs = nixpkgs.legacyPackages.${localSystem};
+        package = packageWithRequisitePackages pkgs;
         app = flake-utils.lib.mkApp { drv = package; };
       in {
         #
         # e.g., to cross-compile
-        # nix build .#pkgsCross.gnu64.entangled
-        # nix build .#pkgsCross.gnu64.pkgsStatic.entangled
-        # nix build .#pkgsCross.aarch64-darwin.pkgsStatic.entangled
+        # nix build .#pkgsCross.gnu64.haskellPackages.entangled
+        # nix build .#pkgsCross.aarch64-darwin.haskellPackages.entangled
         #
         legacyPackages = import nixpkgs {
           config = { };
@@ -92,37 +87,44 @@
 
         packages.default = package;
         packages.${packageName} = package;
-        packages."${packageName}-docker-image" =
-          overlay."${packageName}-docker-image";
+        packages."${packageName}-container-image" =
+          containerImageWithRequisitePackages
+          self.legacyPackages.${localSystem};
 
         apps.default = app;
         apps.${packageName} = app;
 
-        devShells.default = nixpkgs.legacyPackages.${localSystem}.mkShell {
-          packages = with nixpkgs.legacyPackages.${localSystem}; [
-            cabal2nix
-            cabal-install
-            ghcid
-            haskellPackages.haskell-language-server
-          ];
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs.haskellPackages;
+            [
+              cabal2nix
+              cabal-install
+              dhall
+              ghcid
+              haskell-language-server
+              hlint
+              hoogle
+            ] ++ [
+              pkgs.dive # for inspecting container image
+              pkgs.zlib
+            ];
           inputsFrom = [ package ];
         };
 
-        checks.default = nixpkgs.legacyPackages.${localSystem}.runCommand
-          "check-cabal2nix-sync" {
-            nativeBuildInputs =
-              [ nixpkgs.legacyPackages.${localSystem}.cabal2nix ];
-          } ''
-            if [[ -f ${self}/${packageName}.cabal && -f ${self}/${packageName}.nix ]]; then
-              cp ${self}/${packageName}.cabal .
-              if ! (cabal2nix . | diff ${self}/${packageName}.nix -); then
-                echo "error: ${packageName}.nix is out of sync!  To sync, execute ===> cabal2nix . > ${packageName}.nix"
-                exit 1
-              fi
+        checks.default = pkgs.runCommand "check-cabal2nix-sync" {
+          nativeBuildInputs = [ pkgs.cabal2nix ];
+        } ''
+          if [[ -f ${self}/${packageName}.cabal && -f ${self}/nix/${packageName}.nix ]]; then
+            cp ${self}/${packageName}.cabal .
+            if ! (cabal2nix . | diff ${self}/nix/${packageName}.nix -); then
+              echo "error: ${packageName}.nix is out of sync!"
+              echo "  To sync, execute ===> cabal2nix . > ./nix/${packageName}.nix"
+              exit 1
             fi
-            touch $out
-          '';
+          fi
+          touch $out
+        '';
 
-        formatter = nixpkgs.legacyPackages.${localSystem}.nixfmt;
+        formatter = pkgs.nixfmt;
       });
 }
