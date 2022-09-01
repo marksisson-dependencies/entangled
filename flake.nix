@@ -1,4 +1,4 @@
-# to display copmlete list of available compilers
+# to display complete list of available compilers
 # nix search nixpkgs#haskell.compiler ghc -e 'integer|native|HEAD|Binary|js'
 {
   description = "bi-directional tangle daemon for literate programming";
@@ -11,8 +11,8 @@
       packageName = "entangled";
 
       packageWithRequisitePackages = packages:
-        packages.haskell.lib.justStaticExecutables
-        (packages.haskell.lib.compose.overrideCabal
+        with packages.haskell.lib;
+        justStaticExecutables (compose.overrideCabal
           (drv: { src = gitignore.lib.gitignoreSource (drv.src + "/.."); })
           (packages.haskellPackages.callPackage ./nix/${packageName}.nix { }));
 
@@ -45,19 +45,10 @@
         };
     in let
       overlay = final: prev: {
-        haskellPackages = let
-          # https://github.com/NixOS/nixpkgs/issues/49748
-          # see nixpkgs/pkgs/development/haskell-modules/lib/compose.nix (generateOptparseApplicativeCompletion)
-          dhall = if prev.stdenv.hostPlatform != prev.stdenv.buildPlatform then
-            prev.haskellPackages.dhall.overrideAttrs
-            (previousAttrs: { postInstall = ""; })
-          else
-            prev.haskellPackages.dhall;
-        in prev.haskellPackages.override (old: {
+        haskellPackages = prev.haskellPackages.override (old: {
           overrides = let emptyOverlay = final: prev: { };
           in nixpkgs.lib.composeExtensions (old.overrides or emptyOverlay)
           (finalHaskellPackages: prevHaskellPackages: {
-            inherit dhall;
             ${packageName} = packageWithRequisitePackages final;
           });
         });
@@ -95,20 +86,31 @@
         apps.${packageName} = app;
 
         devShells.default = pkgs.mkShell {
-          packages = with pkgs.haskellPackages;
-            [
-              cabal2nix
-              cabal-install
-              dhall
-              ghcid
-              haskell-language-server
-              hlint
-              hoogle
-            ] ++ [
-              pkgs.dive # for inspecting container image
-              pkgs.zlib
-            ];
+          packages = with pkgs; [ zlib ];
           inputsFrom = [ package ];
+        };
+        devShells.tools = pkgs.mkShell {
+          packages = with pkgs; [
+            haskellPackages.cabal-install
+            haskellPackages.cabal2nix
+            haskellPackages.dhall
+            haskellPackages.ghcid
+            haskellPackages.hlint
+            haskellPackages.hoogle
+          ];
+        };
+        devShells.lsp = pkgs.mkShell {
+          packages = with pkgs; [
+            haskellPackages.haskell-language-server
+            rnix-lsp
+            haskellPackages.dhall-lsp-server
+          ];
+        };
+        devShells.extraTools = pkgs.mkShell {
+          packages = with pkgs;
+            [
+              dive # for inspecting container image
+            ];
         };
 
         checks.default = pkgs.runCommand "check-cabal2nix-sync" {

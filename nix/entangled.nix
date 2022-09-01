@@ -34,4 +34,5 @@ mkDerivation {
   homepage = "https://entangled.github.io/";
   description = "bi-directional tangle daemon for literate programming";
   license = lib.licenses.asl20;
+  mainProgram = "entangled";
 }
