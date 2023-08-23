@@ -1,12 +1,12 @@
 -- ~\~ language=Haskell filename=src/Tangle.hs
--- ~\~ begin <<lit/13-tangle.md|src/Tangle.hs>>[0]
+-- ~\~ begin <<lit/13-tangle.md|src/Tangle.hs>>[init]
 {-# LANGUAGE NoImplicitPrelude,ScopedTypeVariables #-}
 module Tangle where
 
 import RIO hiding (try, some, many)
 import qualified RIO.Text as T
 import qualified RIO.Map as M
--- ~\~ begin <<lit/01-entangled.md|import-lazy-map>>[0]
+-- ~\~ begin <<lit/01-entangled.md|import-lazy-map>>[init]
 import qualified Data.Map.Lazy as LM
 -- ~\~ end
 
@@ -25,7 +25,7 @@ import ListStream
 import Document
 import Config (config, HasConfig, Config(..), lookupLanguage, ConfigLanguage(..), AnnotateMethod(..), ConfigSyntax(..))
 
--- ~\~ begin <<lit/13-tangle.md|tangle-imports>>[0]
+-- ~\~ begin <<lit/13-tangle.md|tangle-imports>>[init]
 import Text.Regex.TDFA
 -- ~\~ end
 -- ~\~ begin <<lit/13-tangle.md|tangle-imports>>[1]
@@ -38,7 +38,7 @@ import TextUtil (indent, unlines')
 import Comment (annotateComment, annotateProject, annotateNaked)
 -- ~\~ end
 
--- ~\~ begin <<lit/13-tangle.md|parse-markdown>>[0]
+-- ~\~ begin <<lit/13-tangle.md|parse-markdown>>[init]
 type Match = Maybe (Text, Text, Text, [Text])
 
 matchCodeHeader :: ConfigSyntax -> Text -> Maybe ([CodeProperty], Text)
@@ -175,7 +175,7 @@ parseMarkdown' f t = do
         Left err              -> throwM $ TangleError $ tshow err
         Right (content, refs) -> return $ Document (M.fromList refs) content (getFileMap refs)
 -- ~\~ end
--- ~\~ begin <<lit/13-tangle.md|generate-code>>[0]
+-- ~\~ begin <<lit/13-tangle.md|generate-code>>[init]
 data CodeLine = PlainCode Text
               | NowebReference ReferenceName Text
               deriving (Eq, Show)
@@ -201,16 +201,19 @@ parseCode name = map parseLine' . T.lines
 -- ~\~ end
 -- ~\~ begin <<lit/13-tangle.md|generate-code>>[2]
 type ExpandedCode m = LM.Map ReferenceName (m Text)
-type Annotator m = ReferenceMap -> ReferenceId -> m Text
+type Annotator m = ReferenceMap -> Bool -> ReferenceId -> m Text
 -- ~\~ end
 -- ~\~ begin <<lit/13-tangle.md|generate-code>>[3]
 expandedCode :: (MonadIO m, MonadReader env m, HasLogFunc env)
     => Annotator m -> ReferenceMap -> ExpandedCode m
 expandedCode annotate refs = result
     where result = LM.fromSet expand (referenceNames refs)
-          expand name = unlines' <$> mapM
-                        (annotate refs >=> expandCodeSource result name)
-                        (referencesByName refs name)
+          expand name = expandRefs name (referencesByName refs name)
+          expandRefs _ [] = return ""
+          expandRefs name (a:as) = do
+              annotFirst <- annotate refs True a >>= expandCodeSource result name
+              annotRest  <- mapM (annotate refs False >=> expandCodeSource result name) as
+              return $ unlines' (annotFirst:annotRest)
 
 expandCodeSource :: (MonadIO m, MonadReader env m, HasLogFunc env)
     => ExpandedCode m -> ReferenceName -> Text -> m Text
@@ -224,8 +227,8 @@ expandCodeSource result name t
 -- ~\~ begin <<lit/13-tangle.md|generate-code>>[4]
 selectAnnotator :: (MonadError EntangledError m) => Config -> Annotator m
 selectAnnotator cfg@Config{..} = case configAnnotate of
-    AnnotateNaked         -> \rmap rid -> runReaderT (annotateNaked rmap rid) cfg
-    AnnotateStandard      -> \rmap rid -> runReaderT (annotateComment rmap rid) cfg
-    AnnotateProject       -> \rmap rid -> runReaderT (annotateProject rmap rid) cfg
+    AnnotateNaked         -> \rmap init rid -> runReaderT (annotateNaked rmap init rid) cfg
+    AnnotateStandard      -> \rmap init rid -> runReaderT (annotateComment rmap init rid) cfg
+    AnnotateProject       -> \rmap init rid -> runReaderT (annotateProject rmap init rid) cfg
 -- ~\~ end
 -- ~\~ end

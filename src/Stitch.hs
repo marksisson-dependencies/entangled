@@ -1,5 +1,5 @@
 -- ~\~ language=Haskell filename=src/Stitch.hs
--- ~\~ begin <<lit/14-stitch.md|src/Stitch.hs>>[0]
+-- ~\~ begin <<lit/14-stitch.md|src/Stitch.hs>>[init]
 {-# LANGUAGE NoImplicitPrelude #-}
 module Stitch where
 
@@ -7,7 +7,7 @@ import RIO hiding (some)
 import qualified RIO.Text as T
 import RIO.List.Partial (head, tail)
 
--- ~\~ begin <<lit/14-stitch.md|stitch-imports>>[0]
+-- ~\~ begin <<lit/14-stitch.md|stitch-imports>>[init]
 import ListStream (ListStream(..), tokenP)
 import Document
 import Config (config, HasConfig, Config(..), languageFromName, ConfigLanguage(..))
@@ -17,7 +17,7 @@ import TextUtil (indent, unindent, unlines')
 import Text.Megaparsec
     ( MonadParsec, Parsec, parse, anySingle, manyTill, some, errorBundlePretty, manyTill_ )
 -- ~\~ end
--- ~\~ begin <<lit/14-stitch.md|source-parser>>[0]
+-- ~\~ begin <<lit/14-stitch.md|source-parser>>[init]
 sourceDocument :: ( MonadParsec e (ListStream Text) m
                   , MonadFail m
                   , MonadReader Config m )
@@ -38,7 +38,7 @@ sourceBlock :: ( MonadReader Config m, MonadParsec e (ListStream Text) m, MonadF
             => ConfigLanguage -> m ([Text], [ReferencePair])
 sourceBlock lang = do
     Config{..} <- ask
-    ((ref, beginIndent), _) <- tokenP (commented lang beginBlock)
+    (((ref, init), beginIndent), _) <- tokenP (commented lang beginBlock)
     when configUseLineDirectives (void anySingle)
     (ilines, refpairs) <- mconcat <$> manyTill
                 (sourceBlock lang <|> sourceLine)
@@ -47,7 +47,7 @@ sourceBlock lang = do
     when (any isNothing unindentedLines) $ fail "Indentation error"
     let content = unlines' $ catMaybes unindentedLines
     return ( [ indent beginIndent $ showNowebReference $ referenceName ref
-             | referenceCount ref == 0 ]
+             | init ]
            , (ref, CodeBlock (KnownLanguage $ languageName lang) [] content Nothing):refpairs )
 
 sourceLine :: ( MonadParsec e (ListStream Text) m )
@@ -56,7 +56,7 @@ sourceLine = do
     x <- anySingle
     return ([x], [])
 -- ~\~ end
--- ~\~ begin <<lit/14-stitch.md|stitch>>[0]
+-- ~\~ begin <<lit/14-stitch.md|stitch>>[init]
 type SourceParser = ReaderT Config (Parsec Void (ListStream Text))
 
 untangle :: ( MonadReader env m, HasConfig env, MonadThrow m )
